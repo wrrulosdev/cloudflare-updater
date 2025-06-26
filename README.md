@@ -27,7 +27,7 @@ Perfect for dynamic IP setups (like home networks) where your domain must always
 ## 📁 Installation
 
 ```bash
-git clone https://github.com/yourusername/cloudflare-updater.git
+git clone https://github.com/wrrulosdev/cloudflare-updater.git
 cd cloudflare-updater
 pip install -r requirements.txt
 ```
