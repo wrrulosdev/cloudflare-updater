@@ -3,7 +3,6 @@ import os
 import time
 import sys
 from typing import Optional
-
 import requests
 
 # Configure logging
@@ -80,7 +79,6 @@ class CloudflareUpdater:
             response: requests.Response = requests.put(url, headers=headers, json=data)
             response.raise_for_status()
             logging.info('DNS record updated successfully: %s -> %s', self.record_name, new_ip)
-
         except requests.exceptions.RequestException as e:
             logging.error('Error updating DNS record: %s', e)
 
@@ -99,25 +97,71 @@ class CloudflareUpdater:
             logging.error('Error fetching public IP: %s', e)
             return None
 
+
+def load_multiple_records() -> list:
+    """
+    Loads multiple Cloudflare record configurations from environment variables.
+    You can define multiple records like:
+      API_TOKEN_1, ZONE_ID_1, RECORD_NAME_1
+      API_TOKEN_2, ZONE_ID_2, RECORD_NAME_2
+      etc.
+    :return: A list of record configuration dictionaries.
+    """
+    records: list = []
+    index: int = 1
+
+    while True:
+        api_token: Optional[str] = os.getenv(f'API_TOKEN_{index}')
+        zone_id: Optional[str] = os.getenv(f'ZONE_ID_{index}')
+        record_name: Optional[str] = os.getenv(f'RECORD_NAME_{index}')
+
+        if not api_token or not zone_id or not record_name:
+            # Stop when no more numbered records are found
+            break
+
+        records.append({
+            'api_token': api_token,
+            'zone_id': zone_id,
+            'record_name': record_name
+        })
+        index += 1
+
+    return records
+
+
 def loop() -> None:
     """ Infinite loop to update IP to Cloudflare in case router IP changes """
-    api_token: str = os.getenv('API_TOKEN')
-    zone_id: str = os.getenv('ZONE_ID')
-    record_name: str = os.getenv('RECORD_NAME')
 
-    if api_token is None or zone_id is None or record_name is None:
-        missing: list[str] = []
+    # Load multiple record configurations (if exists)
+    records: list = load_multiple_records()
 
-        if api_token is None:
-            missing.append('API_TOKEN')
+    # Fallback to single record if no numbered ones are defined
+    if not records:
+        api_token: Optional[str] = os.getenv('API_TOKEN')
+        zone_id: Optional[str] = os.getenv('ZONE_ID')
+        record_name: Optional[str] = os.getenv('RECORD_NAME')
 
-        if zone_id is None:
-            missing.append('ZONE_ID')
+        if api_token and zone_id and record_name:
+            records.append({
+                'api_token': api_token,
+                'zone_id': zone_id,
+                'record_name': record_name
+            })
 
-        if record_name is None:
-            missing.append('RECORD_NAME')
+        else:
+            missing: list[str] = []
 
-        logging.error(f'Missing required environment variables: {", ".join(missing)}')
+            if api_token is None:
+                missing.append('API_TOKEN')
+
+            if zone_id is None:
+                missing.append('ZONE_ID')
+                
+            if record_name is None:
+                missing.append('RECORD_NAME')
+
+            logging.error(f'Missing required environment variables: {", ".join(missing)}')
+            sys.exit(1)
 
     delay: int = 120
     current_ipaddress: Optional[str] = CloudflareUpdater.get_public_ip()
@@ -126,7 +170,7 @@ def loop() -> None:
         logging.error('Could not get the current IP address at first. Do you have an Internet connection?')
         sys.exit(1)
 
-    updater: CloudflareUpdater = CloudflareUpdater(api_token, zone_id, record_name)
+    updaters: list = [CloudflareUpdater(**record) for record in records]
     first: bool = True
 
     while True:
@@ -143,7 +187,9 @@ def loop() -> None:
             logging.info('The current IP address is the same as the previous one. Skipping...')
             continue
 
-        updater.update_dns_record(new_ipaddress)
+        for updater in updaters:
+            updater.update_dns_record(new_ipaddress)
+
         current_ipaddress = new_ipaddress
         first = False
 

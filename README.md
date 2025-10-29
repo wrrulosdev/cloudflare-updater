@@ -1,26 +1,27 @@
-# 🌩️ Cloudflare Dynamic DNS Updater
+# 🌩️ Cloudflare Dynamic DNS Updater (Multi-Account Version)
 
-Automatically updates your public IP address in your Cloudflare DNS records using their API.  
-Perfect for dynamic IP setups (like home networks) where your domain must always point to the correct IP.
+Automatically updates your public IP address across **multiple Cloudflare DNS records** — even across **different accounts or zones** — using the Cloudflare API.  
+Perfect for dynamic IP setups (home networks, small servers, labs, etc.) where several domains or subdomains must always point to your current IP.
 
 ---
 
 ## 📦 Features
 
-✅ Automatically updates `A` DNS record on Cloudflare  
-✅ Detects changes in your public IP address  
+✅ Supports **multiple records and accounts** simultaneously  
+✅ Automatically updates `A` DNS records on Cloudflare  
+✅ Detects public IP changes automatically  
 ✅ Detailed logging to console and file  
-✅ Auto-retry on failure  
-✅ Simple configuration via environment variables  
+✅ Auto-retry on failure or connection error  
+✅ Environment-variable-based configuration (secure and portable)  
 
 ---
 
 ## ⚙️ Requirements
 
 - Python 3.8 or higher  
-- Cloudflare account  
-- A domain managed by Cloudflare  
-- An API token with DNS edit permissions  
+- Cloudflare account(s)  
+- At least one domain managed by Cloudflare  
+- API token(s) with **DNS edit** permissions  
 
 ---
 
@@ -34,31 +35,41 @@ pip install -r requirements.txt
 
 ---
 
-## 🔐 Required Environment Variables
+## 🔐 Environment Variables
 
-The script uses environment variables for security and flexibility:
+This version supports **multiple records**, even from **different Cloudflare accounts**.  
+You can define them as numbered environment variables:
 
-| Variable       | Description                                           |
-|----------------|-------------------------------------------------------|
-| `API_TOKEN`    | Your Cloudflare API token                            |
-| `ZONE_ID`      | DNS zone ID of your domain                           |
-| `RECORD_NAME`  | Full subdomain name (e.g. `home.example.com`)        |
+| Variable            | Description                                             |
+|---------------------|---------------------------------------------------------|
+| `API_TOKEN_1`       | API token for record #1                                 |
+| `ZONE_ID_1`         | Zone ID for record #1                                   |
+| `RECORD_NAME_1`     | Full subdomain for record #1 (e.g., `home.example.com`) |
+| `API_TOKEN_2`       | API token for record #2 (optional)                      |
+| `ZONE_ID_2`         | Zone ID for record #2 (optional)                        |
+| `RECORD_NAME_2`     | Full subdomain for record #2 (optional)                 |
 
-Set them in your terminal session:
+You can add as many as you need: `_3`, `_4`, `_5`, etc.
+
+If only one set is defined (`API_TOKEN`, `ZONE_ID`, `RECORD_NAME`), the script will run in **single-record mode** for backward compatibility.
+
+Example `.env` file:
 
 ```env
-export API_TOKEN="your_api_token"
-export ZONE_ID="your_zone_id"
-export RECORD_NAME="subdomain.yourdomain.com"
-```
+API_TOKEN_1=your_first_api_token
+ZONE_ID_1=your_first_zone_id
+RECORD_NAME_1=sub1.yourdomain.com
 
-Or store them in a `.env` file and load with `python-dotenv`.
+API_TOKEN_2=your_second_api_token
+ZONE_ID_2=your_second_zone_id
+RECORD_NAME_2=sub2.otherdomain.net
+```
 
 ---
 
 ## 🚀 Usage
 
-Simply run the script:
+Run the script manually or via cron/systemd:
 
 ```bash
 python cloudflare_updater.py
@@ -68,34 +79,38 @@ The script will:
 
 1. Get your current public IP  
 2. Compare it with the last known IP  
-3. If changed, update the DNS record on Cloudflare  
+3. If changed, update all DNS records defined in your environment  
 4. Repeat every 2 minutes ⏱️  
 
 ---
 
 ## 📄 Logging
 
-📝 All events are logged to:
+📝 All actions are logged to:
 
 - `cloudflare_update.log` (file)  
 - Console (real-time output)
 
-## 💡 Practical Use Case
+Each record and account is logged separately for clarity.
 
-You have a home server or IP camera you want to access via:
+---
 
-```bash
-https://home.yourdomain.com
-```
+## 💡 Example Use Case
 
-With this script and a router port forward, your domain will always point to your latest IP 🎯.
+You host several services at home:
+
+- `home.example.com` → Your NAS  
+- `cam.example.net` → Your security camera  
+- `vpn.mydomain.org` → Your VPN endpoint  
+
+When your IP changes, all three stay perfectly in sync.
 
 ---
 
 ## 🔒 Security
 
-- Your API Token **must have minimal permissions** to edit DNS in the specific zone  
-- **Never share your token.** Use `.env` files or secret managers
+- API tokens should have **minimum required permissions** (edit DNS in the target zone only).  
+- **Never share your token** — use `.env` files or secret managers.  
 
 ---
 
