@@ -40,18 +40,20 @@ pip install -r requirements.txt
 This version supports **multiple records**, even from **different Cloudflare accounts**.  
 You can define them as numbered environment variables:
 
-| Variable            | Description                                             |
-|---------------------|---------------------------------------------------------|
-| `API_TOKEN_1`       | API token for record #1                                 |
-| `ZONE_ID_1`         | Zone ID for record #1                                   |
-| `RECORD_NAME_1`     | Full subdomain for record #1 (e.g., `home.example.com`) |
-| `API_TOKEN_2`       | API token for record #2 (optional)                      |
-| `ZONE_ID_2`         | Zone ID for record #2 (optional)                        |
-| `RECORD_NAME_2`     | Full subdomain for record #2 (optional)                 |
+| Variable            | Description                                                      |
+|---------------------|------------------------------------------------------------------|
+| `API_TOKEN_1`       | API token for record #1                                          |
+| `ZONE_ID_1`         | Zone ID for record #1                                            |
+| `RECORD_NAME_1`     | Full subdomain for record #1 (e.g., `home.example.com`)          |
+| `PROXIED_1`         | Whether Cloudflare proxy is enabled for record #1 (`true`/`false`) |
+| `API_TOKEN_2`       | API token for record #2 (optional)                              |
+| `ZONE_ID_2`         | Zone ID for record #2 (optional)                                |
+| `RECORD_NAME_2`     | Full subdomain for record #2 (optional)                         |
+| `PROXIED_2`         | Whether Cloudflare proxy is enabled for record #2 (`true`/`false`) |
 
-You can add as many as you need: `_3`, `_4`, `_5`, etc.
+You can add as many as you need: `_3`, `_4`, `_5`, etc., following the same pattern.
 
-If only one set is defined (`API_TOKEN`, `ZONE_ID`, `RECORD_NAME`), the script will run in **single-record mode** for backward compatibility.
+If only one set is defined (`API_TOKEN`, `ZONE_ID`, `RECORD_NAME`), the script will run in **single-record mode** for backward compatibility, and `PROXIED` can be optionally specified (default is `true`).
 
 Example `.env` file:
 
@@ -59,10 +61,12 @@ Example `.env` file:
 API_TOKEN_1=your_first_api_token
 ZONE_ID_1=your_first_zone_id
 RECORD_NAME_1=sub1.yourdomain.com
+PROXIED_1=true
 
 API_TOKEN_2=your_second_api_token
 ZONE_ID_2=your_second_zone_id
 RECORD_NAME_2=sub2.otherdomain.net
+PROXIED_2=false
 ```
 
 ---
