@@ -2,10 +2,13 @@ import logging
 import os
 import time
 import sys
-from typing import Optional
+from typing import Optional, Any
 import requests
+from dotenv import load_dotenv
 
-# Configure logging
+load_dotenv()
+
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
@@ -16,11 +19,31 @@ logging.basicConfig(
 )
 
 
+def parse_bool(value: Optional[str], default: bool = True) -> bool:
+    """
+    Parse a string from environment to a boolean.
+    Accepts: '1', 'true', 'yes', 'y', 'on' (case-insensitive) as True.
+    Anything else (including None) falls back to default.
+    """
+    if value is None:
+        return default
+    
+    return value.strip().lower() in ('1', 'true', 'yes', 'y', 'on')
+
+
 class CloudflareUpdater:
-    def __init__(self, api_token: str, zone_id: str, record_name: str, api_url: str = 'https://api.cloudflare.com/client/v4') -> None:
+    def __init__(
+        self,
+        api_token: str,
+        zone_id: str,
+        record_name: str,
+        proxied: bool = True,
+        api_url: str = 'https://api.cloudflare.com/client/v4'
+    ) -> None:
         self.api_token: str = api_token
         self.zone_id: str = zone_id
         self.record_name: str = record_name
+        self.proxied: bool = proxied
         self.api_url: str = api_url
 
     def get_dns_record_id(self) -> Optional[str]:
@@ -29,11 +52,11 @@ class CloudflareUpdater:
         :return: The DNS record ID as a string, or None if not found.
         """
         url: str = f"{self.api_url}/zones/{self.zone_id}/dns_records"
-        headers: dict = {
+        headers: dict[str, str] = {
             'Authorization': f"Bearer {self.api_token}",
             'Content-Type': 'application/json'
         }
-        params: dict = {
+        params: dict[str, str] = {
             'type': 'A',
             'name': self.record_name
         }
@@ -41,15 +64,16 @@ class CloudflareUpdater:
         try:
             response: requests.Response = requests.get(url, headers=headers, params=params)
             response.raise_for_status()
-            records: list = response.json().get('result', [])
+            records: list[dict[str, Any]] = response.json().get('result', [])
 
-            if records:
-                return records[0]['id']
-            else:
-                logging.error('DNS record not found for %s', self.record_name)
+            if not records:
+                logging.error(f'DNS record not found for {self.record_name}')
                 return None
+
+            return records[0]['id']
+            
         except requests.exceptions.RequestException as e:
-            logging.error('Error fetching DNS record ID: %s', e)
+            logging.error(f"Error fetching DNS record ID: {e}")
             return None
 
     def update_dns_record(self, new_ip: str) -> None:
@@ -58,29 +82,33 @@ class CloudflareUpdater:
         :param new_ip: The new public IP address.
         """
         record_id: Optional[str] = self.get_dns_record_id()
+
         if not record_id:
-            logging.error('Unable to update DNS record: Record ID not found')
+            logging.error(f"Unable to update DNS record: Record ID not found for {self.record_name}")
             return
 
         url: str = f"{self.api_url}/zones/{self.zone_id}/dns_records/{record_id}"
-        headers: dict = {
+        headers: dict[str, str] = {
             'Authorization': f"Bearer {self.api_token}",
             'Content-Type': 'application/json'
         }
-        data: dict = {
+        data: dict[str, Any] = {
             'type': 'A',
             'name': self.record_name,
             'content': new_ip,
             'ttl': 120,
-            'proxied': True
+            'proxied': self.proxied
         }
 
         try:
             response: requests.Response = requests.put(url, headers=headers, json=data)
             response.raise_for_status()
-            logging.info('DNS record updated successfully: %s -> %s', self.record_name, new_ip)
+            logging.info(
+                f"DNS record updated successfully: {self.record_name} -> {new_ip} (proxied={self.proxied})"
+            )
+            
         except requests.exceptions.RequestException as e:
-            logging.error('Error updating DNS record: %s', e)
+            logging.error(f"Error updating DNS record: {e}")
 
     @staticmethod
     def get_public_ip() -> Optional[str]:
@@ -91,38 +119,42 @@ class CloudflareUpdater:
         try:
             response: requests.Response = requests.get('https://api.ipify.org?format=json')
             response.raise_for_status()
-            ip_data: dict = response.json()
+            ip_data: dict[str, Any] = response.json()
             return ip_data.get('ip')
+        
         except requests.exceptions.RequestException as e:
-            logging.error('Error fetching public IP: %s', e)
+            logging.error(f"Error fetching public IP: {e}")
             return None
 
 
-def load_multiple_records() -> list:
+def load_multiple_records() -> list[dict[str, Any]]:
     """
     Loads multiple Cloudflare record configurations from environment variables.
     You can define multiple records like:
-      API_TOKEN_1, ZONE_ID_1, RECORD_NAME_1
-      API_TOKEN_2, ZONE_ID_2, RECORD_NAME_2
+      API_TOKEN_1, ZONE_ID_1, RECORD_NAME_1, PROXIED_1
+      API_TOKEN_2, ZONE_ID_2, RECORD_NAME_2, PROXIED_2
       etc.
     :return: A list of record configuration dictionaries.
     """
-    records: list = []
+    records: list[dict[str, Any]] = []
     index: int = 1
 
     while True:
         api_token: Optional[str] = os.getenv(f'API_TOKEN_{index}')
         zone_id: Optional[str] = os.getenv(f'ZONE_ID_{index}')
         record_name: Optional[str] = os.getenv(f'RECORD_NAME_{index}')
+        proxied_env: Optional[str] = os.getenv(f'PROXIED_{index}')
 
+        # Stop when no more numbered records are found
         if not api_token or not zone_id or not record_name:
-            # Stop when no more numbered records are found
             break
 
+        proxied: bool = parse_bool(proxied_env, default=True)
         records.append({
             'api_token': api_token,
             'zone_id': zone_id,
-            'record_name': record_name
+            'record_name': record_name,
+            'proxied': proxied
         })
         index += 1
 
@@ -133,21 +165,23 @@ def loop() -> None:
     """ Infinite loop to update IP to Cloudflare in case router IP changes """
 
     # Load multiple record configurations (if exists)
-    records: list = load_multiple_records()
+    records: list[dict[str, Any]] = load_multiple_records()
 
     # Fallback to single record if no numbered ones are defined
     if not records:
         api_token: Optional[str] = os.getenv('API_TOKEN')
         zone_id: Optional[str] = os.getenv('ZONE_ID')
         record_name: Optional[str] = os.getenv('RECORD_NAME')
+        proxied_env: Optional[str] = os.getenv('PROXIED')
 
         if api_token and zone_id and record_name:
+            proxied: bool = parse_bool(proxied_env, default=True)
             records.append({
                 'api_token': api_token,
                 'zone_id': zone_id,
-                'record_name': record_name
+                'record_name': record_name,
+                'proxied': proxied
             })
-
         else:
             missing: list[str] = []
 
@@ -156,7 +190,7 @@ def loop() -> None:
 
             if zone_id is None:
                 missing.append('ZONE_ID')
-                
+
             if record_name is None:
                 missing.append('RECORD_NAME')
 
@@ -170,7 +204,15 @@ def loop() -> None:
         logging.error('Could not get the current IP address at first. Do you have an Internet connection?')
         sys.exit(1)
 
-    updaters: list = [CloudflareUpdater(**record) for record in records]
+    updaters: list[CloudflareUpdater] = [
+        CloudflareUpdater(
+            api_token=record['api_token'],
+            zone_id=record['zone_id'],
+            record_name=record['record_name'],
+            proxied=record.get('proxied', True)
+        )
+        for record in records
+    ]
     first: bool = True
 
     while True:
